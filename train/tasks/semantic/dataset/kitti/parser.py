@@ -229,7 +229,7 @@ class Parser():
                batch_size,        # batch size for train and val
                workers,           # threads to load data
                gt=True,           # get gt?
-               shuffle_train=True):  # shuffle training set?
+               shuffle_train=False):  # shuffle training set?
     super(Parser, self).__init__()
 
     # if I am training, get the dataset
@@ -246,7 +246,7 @@ class Parser():
     self.batch_size = batch_size
     self.workers = workers
     self.gt = gt
-    self.shuffle_train = shuffle_train
+    self.shuffle_train = False
 
     # number of classes that matters is the one for xentropy
     self.nclasses = len(self.learning_map_inv)
@@ -264,7 +264,7 @@ class Parser():
 
     self.trainloader = torch.utils.data.DataLoader(self.train_dataset,
                                                    batch_size=self.batch_size,
-                                                   shuffle=self.shuffle_train,
+                                                   shuffle=False,
                                                    num_workers=self.workers,
                                                    pin_memory=True,
                                                    drop_last=True)

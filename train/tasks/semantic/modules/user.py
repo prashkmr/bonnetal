@@ -62,7 +62,7 @@ class User():
                       self.parser.get_n_classes())
 
     # GPU?
-    self.gpu = False
+    self.gpu = True
     self.model_single = self.model
     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Infering in device: ", self.device)

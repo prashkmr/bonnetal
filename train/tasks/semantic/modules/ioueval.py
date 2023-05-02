@@ -10,9 +10,9 @@ from tasks.semantic.postproc.borderMask import borderMask
 
 
 class iouEval:
-  def __init__(self, n_classes, device, ignore=None):
+  def __init__(self, n_classes, ignore=None):
     self.n_classes = n_classes
-    self.device = device
+    # self.device = device
     # if ignore is larger than n_classes, consider no ignoreIndex
     self.ignore = torch.tensor(ignore).long()
     self.include = torch.tensor(
@@ -26,7 +26,7 @@ class iouEval:
 
   def reset(self):
     self.conf_matrix = torch.zeros(
-        (self.n_classes, self.n_classes), device=self.device).long()
+        (self.n_classes, self.n_classes)).long()
     self.ones = None
     self.last_scan_size = None  # for when variable scan size is used
 
@@ -34,9 +34,9 @@ class iouEval:
     # if numpy, pass to pytorch
     # to tensor
     if isinstance(x, np.ndarray):
-      x = torch.from_numpy(np.array(x)).long().to(self.device)
+      x = torch.from_numpy(np.array(x)).long()
     if isinstance(y, np.ndarray):
-      y = torch.from_numpy(np.array(y)).long().to(self.device)
+      y = torch.from_numpy(np.array(y)).long()
 
     # sizes should be "batch_size x H x W"
     x_row = x.reshape(-1)  # de-batchify
@@ -47,7 +47,7 @@ class iouEval:
 
     # ones is what I want to add to conf when I
     if self.ones is None or self.last_scan_size != idxs.shape[-1]:
-      self.ones = torch.ones((idxs.shape[-1]), device=self.device).long()
+      self.ones = torch.ones((idxs.shape[-1])).long()
       self.last_scan_size = idxs.shape[-1]
 
     # make confusion matrix (cols = gt, rows = pred)
@@ -100,7 +100,7 @@ class biouEval(iouEval):
     else:
       ignore = ignore[0]
 
-    self.borderer = borderMask(self.n_classes, self.device,
+    self.borderer = borderMask(self.n_classes,
                                self.border_size, self.kern_conn,
                                background_class=ignore)
     self.reset()
@@ -117,15 +117,15 @@ class biouEval(iouEval):
     # if numpy, pass to pytorch
     # to tensor
     if isinstance(range_y, np.ndarray):
-      range_y = torch.from_numpy(np.array(range_y)).long().to(self.device)
+      range_y = torch.from_numpy(np.array(range_y)).long()
     if isinstance(x, np.ndarray):
-      x = torch.from_numpy(np.array(x)).long().to(self.device)
+      x = torch.from_numpy(np.array(x)).long()
     if isinstance(y, np.ndarray):
-      y = torch.from_numpy(np.array(y)).long().to(self.device)
+      y = torch.from_numpy(np.array(y)).long()
     if isinstance(px, np.ndarray):
-      px = torch.from_numpy(np.array(px)).long().to(self.device)
+      px = torch.from_numpy(np.array(px)).long()
     if isinstance(py, np.ndarray):
-      py = torch.from_numpy(np.array(py)).long().to(self.device)
+      py = torch.from_numpy(np.array(py)).long()
 
     # get border mask of range_y
     border_mask_2d = self.borderer(range_y)
