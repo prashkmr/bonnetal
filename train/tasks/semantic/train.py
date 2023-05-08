@@ -231,7 +231,7 @@ my_callback=MyCallback()
 model = BonnetalSeg(ARCH, DATA, FLAGS.dataset, FLAGS.log,my_callback, FLAGS.pretrained)
 my_callback.set_model(model)
   # create trainer and start the training
-trainer = pl.Trainer(devices=1, accelerator="gpu" ,max_epochs=100,callbacks=[my_callback])
+trainer = pl.Trainer(devices=4, accelerator="gpu" ,max_epochs=100,callbacks=[my_callback])
 
 
 parserModule = imp.load_source("parserModule", parserPath)
@@ -253,6 +253,6 @@ parser_load = parserModule.Parser(
                                       )
 
 train_loader =  parser_load.get_train_set()
-#val_loader   =  parser_load.get_valid_set()
-trainer.fit(model, train_loader)
+val_loader   =  parser_load.get_valid_set()
+trainer.fit(model, train_loader, val_loader)
 

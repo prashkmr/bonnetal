@@ -76,8 +76,8 @@ def find_poseGraph(scans,iterations=10):
     for idx in range(len(scans)):
         if idx==0:
             pass
-        pcd1=scans[prev_idx]
-        pcd2=scans[idx]
+        pcd1=scans[prev_idx].to("cuda")
+        pcd2=scans[idx].to("cuda")
         vertex_idx+=1
         transform=odomprov.provide(pcd1,pcd2)
         #print(transform.get_device(),"*********",poses[-1].get_device())

@@ -27,39 +27,76 @@ from tasks.semantic.modules.segmentator import *
 from tasks.semantic.modules.ioueval import *
 from tasks.semantic.modules.SLAM_ERROR import *
 
-# #@numba.jit(nopython=True, parallel=True, cache=True)
-# def new_cloud_bonnetal(points, labels, above_gnd: torch.tensor):
-#     lidar_data = points[:, :2]  # neglecting the z co-ordinate
-#     points2 = torch.zeros((points.shape[0], 4), dtype=torch.float32,device="cuda",requires_grad=True) - 1
-#     N = lidar_data.shape[0]  # Total number of points
+# @numba.jit(nopython=True, parallel=True, cache=True)
+# def new_cloud_bonnetal(points, labels, above_gnd: np.array):
+#   # import time
+#   # time.sleep(2)
+#   lidar_data = points[:, :2]  # neglecting the z co-ordinate
+#   #height_data = points[:, 2] #+ 1.732
+#   points2 = np.zeros((points.shape[0],4), dtype=np.float32) - 1 
+#   # lidar_data -= grid_sub
+#   # lidar_data = lidar_data /voxel_size # multiplying by the resolution
+#   # lidar_data = np.floor(lidar_data)
+#   # lidar_data = lidar_data.astype(np.int32)
+#   # above_gnd = np.array([44, 48, 50, 51, 70, 71, 80, 81])
+#   N = lidar_data.shape[0] # Total number of points
+ 
+#   for i in numba.prange(N):
+#       # x = lidar_data[i,0]
+#       # y = lidar_data[i,1]
+#       # z = height_data[i]
+#       # if (0 < x < elevation_map.shape[0]) and (0 < y < elevation_map.shape[1]):
+#       #     if z > elevation_map[x,y] + threshold:
+#       #         points2[i,:] = points[i,:]
+#       # print(labels[i])
+#     # if i >= labels.shape[0] or i>=points.shape[0]:
+#     #   break
+#     # try:
+#     if labels[i] in above_gnd:
+#       points2[i,:] = points[i,:]
+#     # except Exception as e:
+#     #   print(e)
+#   points2 = points2[points2[:,0] != -1]
+#   return points2
 
-#     for i in range(N):
-#         if labels[i] in above_gnd:
-#             points2[i, :] = points[i, :]
-
-#     points2 = points2[points2[:, 0] != -1]
-#     return points2
 
 
+def softargmax(x):
+    print(x.shape)
+    beta = 1000000.0
+    xx = beta  * x
+    c,h,w=x.shape
+    sm = torch.nn.functional.softmax(xx, dim=0)
+    #print(sm.shape)
+    indices=torch.tensor([i for i in range(c)]).cuda()
+    indices = torch.stack([torch.stack([indices]*h,dim=1)]*w,dim=2)
+    #print(indices.shape)
+    y = torch.mul(indices, sm)
+    #print(y.shape)
+    result=torch.sum(y,dim=0).cuda()
+    # import pdb;pdb.set_trace()
+    return result
 
-# @torch.jit.script
-def lidar_mask(labels, above_gnd):
-  # mask = torch.empty(points.shape[:], dtype=torch.bool)
-  mask = torch.full(labels.shape[:0], False, dtype=torch.bool, device = labels.device)
-  # import pdb; pdb.set_trace()
-  for i in above_gnd:
-    mask = torch.logical_or(mask, torch.where(labels == i, True, False))
-  return mask
-  
+
+
+
 
 def new_cloud_bonnetal(points, labels, above_gnd):
-  device = points.device
-  # import pdb; pdb.set_trace()
-  return points [lidar_mask(
-                     labels.to(device),
-                     above_gnd
-                     )
-  ]
+    # import pdb;pdb.set_trace()
+    #print(labels[:100])
+    # above_gnd= above_gnd_red = torch.tensor([15.0,18.0],device="cuda",dtype=torch.float32) 
+    mask = torch.zeros_like(labels).cuda().float()
+    labels1 = torch.tensor(torch.abs(labels+0.1).int(), dtype= torch.float).cuda()
+    # labels = torch.tensor(labels, dtype= torch.float)
+    
+    mask[torch.where(torch.isin(labels1, above_gnd))] = 1
+    mul=labels*mask
+    mul[mul>1.0]=1.0
+    # import pdb;pdb.set_trace()
+
+    result=torch.mul(points.T,mul)
+    #points = points.T[mask.bool(),:]
+    return result.T
 
 
 
@@ -197,34 +234,36 @@ class BonnetalSeg(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         in_vol, proj_mask, proj_labels, unproj_labels, path_seq, path_name, p_x, p_y, _, _, _, unproj_xyz, _, unproj_remissions, npoints=batch
         proj_labels = proj_labels.cuda(non_blocking=True).long()
-        import pdb; pdb.set_trace()
         output = self(in_vol, proj_mask)
-        unproj_argmax = torch.stack([output[k].argmax(dim=0)[p_y[k],p_x[k]] for k in range(len(output))])
-        pred_np2 = unproj_argmax
-        # pred_np = pred_np.view(len(output), -1).to(torch.int32)
-        pred_np = pred_np2.view(len(output), -1).to(torch.float32)
-        above_gnd_red = torch.tensor([10,11,13,14,15,16,17,18,19],device="cuda",dtype=torch.float32) 
-        points = torch.cat([unproj_xyz[:, :, :], unproj_remissions[:, :].unsqueeze(2)], dim=2)
-        print("**************", "Gradient_check -----")
-        # points.mean().backward()
-        pred_np.mean().backward()
-        print("completed", "*********************")
-
-        slam_err=0
+        #-------------------------------------------------------------------------------
+        # unproj_argmax = torch.stack([output[k].argmax(dim=0)[p_y[k],p_x[k]] for k in range(len(output))])
+        unproj_argmax = torch.stack([ softargmax(output[k]) [p_y[k],p_x[k]] for k in range(len(output))])
+        # pred_np = unproj_argmax.cpu().numpy()
+        pred_np = unproj_argmax.cuda()
+        # pred_np = pred_np.reshape((len(output),-1)).astype(np.int32)
+        pred_np = pred_np.reshape((len(output),-1)).float().cuda()
+        # pred_np.requires_grad = True
+        above_gnd_red = torch.tensor([10,11,13,14,15,16,17,18,19], dtype=torch.float).cuda() 
+        points = torch.cat([unproj_xyz[:, :, :], unproj_remissions[:, :].unsqueeze(2)], dim=2).cuda()
+        #-------------------------------------------------------------------------------
+        loss = self.criterion(torch.log(output.clamp(min=1e-8)), proj_labels)
+        # slam_err=0
         
         if self.current_epoch%1==0  and self.current_epoch >= 0:
-            # print("*"*10,self.current_epoch,"*"*10)
-            # print(points[0, :npoints[0]].shape, "************", unproj_labels[0,:npoints[0]].shape)
-            trues = [new_cloud_bonnetal(points[k, :npoints[k]], unproj_labels[k,:npoints[k]], above_gnd_red)[:,:3] for k in range(len(points))]
-            preds = [new_cloud_bonnetal(points[k, :npoints[k]], pred_np[k, :npoints[k]], above_gnd_red)[:,:3] for k in range(len(points))]
-            slam_err=Slam_error(trues, preds)
-            # slam_err
+            # trues = [torch.Tensor(new_cloud_bonnetal(points[k, :npoints[k]].copy(), unproj_labels[k,:npoints[k]].cpu().numpy().copy(), above_gnd_red)[:,:3]) for k in range(len(points))]
+            # preds = [torch.Tensor(new_cloud_bonnetal(points[k, :npoints[k]].copy(), pred_np[k, :npoints[k]].copy(), above_gnd_red)[:,:3]) for k in range(len(points))]
+            # import pdb;pdb.set_trace()
+            trues = [(new_cloud_bonnetal(points[k, :npoints[k]], unproj_labels[k,:npoints[k]], above_gnd_red)[:,:3]) for k in range(len(points))]
+            preds = [(new_cloud_bonnetal(points[k, :npoints[k]], pred_np[k, :npoints[k]], above_gnd_red)[:,:3]) for k in range(len(points))]
+            # import pdb;pdb.set_trace()
+            slam_err=Slam_error(trues, preds)            # slam_err
             print("SLAM_ERROR_SUCCESSFUL")
 
-        # loss = self.criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + slam_err
-        loss =  slam_err
+        # 
+            loss +=  (slam_err*10)
         
         loss1 = loss.mean()
+        print(loss1, "************************")
         with torch.no_grad():
             self.my_callback.evaluator.reset()
             argmax = output.argmax(dim=1)
@@ -247,6 +286,7 @@ class BonnetalSeg(pl.LightningModule):
                     update = np.linalg.norm(-max(lr, 1e-10) *
                                     value.grad.cpu().numpy().reshape((-1)))
                     update_ratios.append(update / max(w, 1e-10))
+        print(update_ratios,"******************************************************************")
         update_ratios = np.array(update_ratios)
         update_mean = update_ratios.mean()
         update_std = update_ratios.std()
